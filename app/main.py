@@ -1,212 +1,374 @@
 import streamlit as st
-import os
+import docker
+import pandas as pd
 import tarfile
-import tempfile
-import shutil
-import subprocess
-from pathlib import Path
+import io
 from datetime import datetime
-import psutil
 
-st.set_page_config(page_title="Container Manager", page_icon="🐳", layout="wide")
+st.set_page_config(page_title="Docker Container Manager", page_icon="🐳", layout="wide")
 
 st.title("🐳 Docker Container Manager")
 
-# Sidebar for navigation
-page = st.sidebar.selectbox("Select Page", ["Container Info", "File Manager"])
+def get_docker_client():
+    """Get Docker client with error handling."""
+    try:
+        client = docker.from_env()
+        # Test connection
+        client.ping()
+        return client
+    except docker.errors.DockerException as e:
+        st.error(f"❌ Cannot connect to Docker daemon: {e}")
+        st.info("💡 Make sure Docker is running and accessible")
+        return None
+    except Exception as e:
+        st.error(f"❌ Unexpected error: {e}")
+        return None
 
+def format_ports(port_bindings):
+    """Format port bindings for display."""
+    if not port_bindings:
+        return "None"
+    ports = []
+    for container_port, host_bindings in port_bindings.items():
+        if host_bindings:
+            for binding in host_bindings:
+                host_port = binding['HostPort']
+                ports.append(f"{host_port}→{container_port}")
+        else:
+            ports.append(f"*→{container_port}")
+    return ", ".join(ports)
+
+def format_size(bytes_size):
+    """Format bytes to human readable size."""
+    for unit in ['B', 'KB', 'MB', 'GB']:
+        if bytes_size < 1024.0:
+            return f"{bytes_size:.2f} {unit}"
+        bytes_size /= 1024.0
+    return f"{bytes_size:.2f} TB"
+
+# Initialize Docker client
+client = get_docker_client()
+
+if client is None:
+    st.stop()
+
+# Sidebar for container selection
+st.sidebar.header("📦 Select Container")
+
+# Refresh button
+if st.sidebar.button("🔄 Refresh", use_container_width=True):
+    st.rerun()
+
+show_all = st.sidebar.checkbox("Show all containers", value=False)
+
+# Get containers
+try:
+    containers = client.containers.list(all=show_all)
+
+    if not containers:
+        if show_all:
+            st.warning("No containers found on this system")
+        else:
+            st.warning("No running containers found. Check 'Show all containers' to see stopped ones.")
+        st.stop()
+
+    # Container selection
+    container_names = [f"{c.name} ({c.status})" for c in containers]
+    selected_idx = st.sidebar.selectbox(
+        "Container",
+        range(len(containers)),
+        format_func=lambda x: container_names[x]
+    )
+
+    selected_container = containers[selected_idx]
+
+    # Status indicator
+    status_color = "🟢" if selected_container.status == "running" else "🔴"
+    st.sidebar.metric("Status", f"{status_color} {selected_container.status}")
+    st.sidebar.metric("ID", selected_container.short_id)
+
+except Exception as e:
+    st.error(f"Error listing containers: {e}")
+    st.stop()
+
+# Page selection
+page = st.sidebar.selectbox("Page", ["Container Info", "File Manager", "All Containers"])
+
+# Container actions
+if page != "All Containers":
+    st.sidebar.divider()
+    st.sidebar.subheader("🎮 Actions")
+
+    col1, col2 = st.sidebar.columns(2)
+
+    with col1:
+        if selected_container.status == "running":
+            if st.button("⏸️ Stop", use_container_width=True):
+                try:
+                    selected_container.stop()
+                    st.success(f"Stopped {selected_container.name}")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error: {e}")
+        else:
+            if st.button("▶️ Start", use_container_width=True):
+                try:
+                    selected_container.start()
+                    st.success(f"Started {selected_container.name}")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error: {e}")
+
+    with col2:
+        if st.button("🔄 Restart", use_container_width=True):
+            try:
+                selected_container.restart()
+                st.success(f"Restarted {selected_container.name}")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error: {e}")
+
+# PAGE: Container Info
 if page == "Container Info":
-    st.header("📊 Container Information")
+    st.header(f"📊 {selected_container.name}")
+
+    selected_container.reload()
+    attrs = selected_container.attrs
 
     col1, col2 = st.columns(2)
 
     with col1:
-        st.subheader("System Info")
+        st.subheader("Basic Info")
+        st.text(f"Name: {selected_container.name}")
+        st.text(f"ID: {selected_container.id[:12]}")
+        image_name = selected_container.image.tags[0] if selected_container.image.tags else selected_container.image.id[:12]
+        st.text(f"Image: {image_name}")
+        st.text(f"Status: {selected_container.status}")
+        st.text(f"Created: {attrs['Created'][:19].replace('T', ' ')}")
 
-        # Hostname
-        hostname = subprocess.run(['hostname'], capture_output=True, text=True).stdout.strip()
-        st.metric("Hostname", hostname)
-
-        # Uptime
-        try:
-            uptime_output = subprocess.run(['uptime', '-p'], capture_output=True, text=True).stdout.strip()
-            st.metric("Uptime", uptime_output)
-        except:
-            st.metric("Uptime", "N/A")
-
-        # Current User
-        current_user = os.getenv('USER', 'unknown')
-        st.metric("Current User", current_user)
-
-        # Python Version
-        import sys
-        st.metric("Python Version", f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}")
+        st.subheader("Ports")
+        ports = attrs['NetworkSettings']['Ports']
+        if ports:
+            for port, bindings in ports.items():
+                if bindings:
+                    for binding in bindings:
+                        st.text(f"{binding['HostPort']} → {port}")
+                else:
+                    st.text(f"{port} (not published)")
+        else:
+            st.text("No ports exposed")
 
     with col2:
         st.subheader("Resources")
 
-        # CPU Usage
-        cpu_percent = psutil.cpu_percent(interval=1)
-        st.metric("CPU Usage", f"{cpu_percent}%")
+        if selected_container.status == "running":
+            try:
+                stats = selected_container.stats(stream=False)
 
-        # Memory Usage
-        memory = psutil.virtual_memory()
-        st.metric("Memory Usage", f"{memory.percent}%",
-                 delta=f"{memory.used / (1024**3):.2f}GB / {memory.total / (1024**3):.2f}GB")
+                # CPU
+                cpu_delta = stats['cpu_stats']['cpu_usage']['total_usage'] - stats['precpu_stats']['cpu_usage']['total_usage']
+                system_delta = stats['cpu_stats']['system_cpu_usage'] - stats['precpu_stats']['system_cpu_usage']
+                cpu_count = len(stats['cpu_stats']['cpu_usage']['percpu_usage'])
+                cpu_percent = (cpu_delta / system_delta) * cpu_count * 100.0 if system_delta > 0 else 0
+                st.metric("CPU Usage", f"{cpu_percent:.2f}%")
 
-        # Disk Usage
-        disk = psutil.disk_usage('/')
-        st.metric("Disk Usage", f"{disk.percent}%",
-                 delta=f"{disk.used / (1024**3):.2f}GB / {disk.total / (1024**3):.2f}GB")
+                # Memory
+                mem_usage = stats['memory_stats'].get('usage', 0)
+                mem_limit = stats['memory_stats'].get('limit', 1)
+                mem_percent = (mem_usage / mem_limit) * 100
+                st.metric("Memory Usage", f"{mem_percent:.2f}%")
+                st.text(f"{format_size(mem_usage)} / {format_size(mem_limit)}")
+
+                # Network
+                if 'networks' in stats:
+                    net_rx = sum(net['rx_bytes'] for net in stats['networks'].values())
+                    net_tx = sum(net['tx_bytes'] for net in stats['networks'].values())
+                    st.metric("Network RX", format_size(net_rx))
+                    st.metric("Network TX", format_size(net_tx))
+
+            except Exception as e:
+                st.warning(f"Cannot get stats: {e}")
+        else:
+            st.info("Container is not running")
 
     st.divider()
 
     # Environment Variables
     with st.expander("🔐 Environment Variables"):
-        env_vars = dict(os.environ)
-        # Hide sensitive info
-        sensitive_keys = ['API_KEY', 'PASSWORD', 'SECRET', 'TOKEN', 'ANTHROPIC']
-        for key, value in sorted(env_vars.items()):
-            if any(s in key.upper() for s in sensitive_keys):
-                st.text(f"{key} = ***HIDDEN***")
+        env_vars = attrs['Config']['Env']
+        sensitive = ['API_KEY', 'PASSWORD', 'SECRET', 'TOKEN', 'ANTHROPIC']
+        for env in sorted(env_vars):
+            if '=' in env:
+                key, value = env.split('=', 1)
+                if any(s in key.upper() for s in sensitive):
+                    st.text(f"{key} = ***HIDDEN***")
+                else:
+                    st.text(f"{key} = {value}")
             else:
-                st.text(f"{key} = {value}")
+                st.text(env)
 
-    # Process List
-    with st.expander("⚙️ Running Processes"):
-        processes = []
-        for proc in psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_percent']):
+    # Volumes
+    with st.expander("💾 Volumes & Mounts"):
+        mounts = attrs['Mounts']
+        if mounts:
+            for mount in mounts:
+                st.text(f"Type: {mount['Type']}")
+                if mount['Type'] == 'volume':
+                    st.text(f"  Volume: {mount.get('Name', 'N/A')}")
+                st.text(f"  Source: {mount['Source']}")
+                st.text(f"  Destination: {mount['Destination']}")
+                st.text(f"  Mode: {mount.get('Mode', 'rw')}")
+                st.text("---")
+        else:
+            st.text("No volumes mounted")
+
+    # Logs
+    with st.expander("📜 Recent Logs (last 100 lines)"):
+        if selected_container.status == "running":
             try:
-                processes.append(proc.info)
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                pass
+                logs = selected_container.logs(tail=100).decode('utf-8')
+                st.code(logs)
+            except Exception as e:
+                st.error(f"Cannot get logs: {e}")
+        else:
+            st.info("Container is not running")
 
-        st.dataframe(processes, use_container_width=True)
-
+# PAGE: File Manager
 elif page == "File Manager":
-    st.header("📁 File Manager & Downloader")
+    st.header(f"📁 File Manager: {selected_container.name}")
 
-    # Directory browser
-    st.subheader("Browse Directory")
+    if selected_container.status != "running":
+        st.warning("⚠️ Container must be running to browse files")
+        st.stop()
 
-    # Get home directory
-    home_dir = os.path.expanduser("~")
+    # Path input
+    if 'current_path' not in st.session_state:
+        st.session_state.current_path = "/home/terminal"
 
-    # Directory input
-    current_dir = st.text_input("Current Directory", value=home_dir, key="dir_input")
+    current_path = st.text_input("Path", value=st.session_state.current_path)
+    st.session_state.current_path = current_path
 
-    if os.path.exists(current_dir) and os.path.isdir(current_dir):
-        # List contents
-        try:
-            items = []
-            for item in sorted(os.listdir(current_dir)):
-                item_path = os.path.join(current_dir, item)
-                try:
-                    stat = os.stat(item_path)
-                    is_dir = os.path.isdir(item_path)
-                    size = stat.st_size if not is_dir else 0
-                    modified = datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S')
+    # List directory
+    try:
+        exec_result = selected_container.exec_run(f'ls -la {current_path}')
+        if exec_result.exit_code == 0:
+            st.code(exec_result.output.decode('utf-8'))
+        else:
+            st.error(f"Error: {exec_result.output.decode('utf-8')}")
+    except Exception as e:
+        st.error(f"Cannot list directory: {e}")
 
-                    items.append({
-                        'Name': f"📁 {item}" if is_dir else f"📄 {item}",
-                        'Type': 'Directory' if is_dir else 'File',
-                        'Size': f"{size / 1024:.2f} KB" if not is_dir else "-",
-                        'Modified': modified,
-                        'Path': item_path
-                    })
-                except (PermissionError, OSError):
-                    continue
+    st.divider()
 
-            if items:
-                st.dataframe(items, use_container_width=True, hide_index=True)
-            else:
-                st.info("Empty directory")
+    # Quick navigation
+    st.subheader("⚡ Quick Navigation")
+    col1, col2, col3, col4 = st.columns(4)
 
-        except PermissionError:
-            st.error("❌ Permission denied to access this directory")
-    else:
-        st.error("❌ Directory does not exist")
+    with col1:
+        if st.button("📁 /home"):
+            st.session_state.current_path = "/home"
+            st.rerun()
+    with col2:
+        if st.button("📁 /tmp"):
+            st.session_state.current_path = "/tmp"
+            st.rerun()
+    with col3:
+        if st.button("📁 /var/log"):
+            st.session_state.current_path = "/var/log"
+            st.rerun()
+    with col4:
+        if st.button("📁 /etc"):
+            st.session_state.current_path = "/etc"
+            st.rerun()
 
     st.divider()
 
     # Download section
     st.subheader("📦 Download Files/Folders")
 
-    download_path = st.text_input("Path to Download (file or folder)", value=home_dir)
-    archive_name = st.text_input("Archive Name (without extension)", value="download")
+    download_path = st.text_input("Path to Download", value=current_path)
+    archive_name = st.text_input("Archive Name", value=f"{selected_container.name}_download")
 
-    col1, col2 = st.columns([1, 4])
-
-    with col1:
-        download_button = st.button("📥 Create Archive", type="primary")
-
-    if download_button:
-        if not os.path.exists(download_path):
-            st.error("❌ Path does not exist!")
-        else:
+    if st.button("📥 Download as TAR", type="primary"):
+        if download_path:
             with st.spinner("Creating archive..."):
                 try:
-                    # Create temporary tar file
-                    temp_dir = tempfile.mkdtemp()
-                    tar_filename = f"{archive_name}.tar.gz"
-                    tar_path = os.path.join(temp_dir, tar_filename)
+                    bits, stat = selected_container.get_archive(download_path)
+                    tar_data = b''.join(bits)
 
-                    # Create tar archive
-                    with tarfile.open(tar_path, "w:gz") as tar:
-                        if os.path.isdir(download_path):
-                            # Add entire directory
-                            tar.add(download_path, arcname=os.path.basename(download_path))
-                        else:
-                            # Add single file
-                            tar.add(download_path, arcname=os.path.basename(download_path))
-
-                    # Read the tar file
-                    with open(tar_path, "rb") as f:
-                        tar_data = f.read()
-
-                    # Cleanup temp directory
-                    shutil.rmtree(temp_dir)
-
-                    # Provide download button
-                    st.success(f"✅ Archive created successfully! Size: {len(tar_data) / 1024:.2f} KB")
+                    st.success(f"✅ Archive created! Size: {format_size(len(tar_data))}")
                     st.download_button(
                         label="⬇️ Download Archive",
                         data=tar_data,
-                        file_name=tar_filename,
-                        mime="application/gzip"
+                        file_name=f"{archive_name}.tar",
+                        mime="application/x-tar"
                     )
-
+                except docker.errors.NotFound:
+                    st.error(f"❌ Path not found: {download_path}")
                 except Exception as e:
-                    st.error(f"❌ Error creating archive: {str(e)}")
+                    st.error(f"❌ Error: {e}")
 
     st.divider()
 
-    # Quick actions
-    st.subheader("⚡ Quick Actions")
+    # Execute command
+    st.subheader("⚙️ Execute Command")
+    command = st.text_input("Command", placeholder="ls -la /home")
 
-    col1, col2, col3 = st.columns(3)
+    if st.button("▶️ Execute"):
+        if command:
+            with st.spinner("Executing..."):
+                try:
+                    exec_result = selected_container.exec_run(command)
+                    output = exec_result.output.decode('utf-8')
 
+                    if exec_result.exit_code == 0:
+                        st.success(f"✅ Exit code: {exec_result.exit_code}")
+                    else:
+                        st.error(f"❌ Exit code: {exec_result.exit_code}")
+
+                    st.code(output)
+                except Exception as e:
+                    st.error(f"Error: {e}")
+
+# PAGE: All Containers
+elif page == "All Containers":
+    st.header("📦 All Containers")
+
+    col1, col2 = st.columns([1, 3])
     with col1:
-        if st.button("📁 Download Home Directory"):
-            st.session_state['download_path'] = home_dir
+        if st.button("🔄 Refresh List"):
             st.rerun()
 
-    with col2:
-        if st.button("📁 Download /tmp"):
-            st.session_state['download_path'] = "/tmp"
-            st.rerun()
+    try:
+        all_containers = client.containers.list(all=show_all)
 
-    with col3:
-        if st.button("📁 Download Current Working Dir"):
-            st.session_state['download_path'] = os.getcwd()
-            st.rerun()
+        if not all_containers:
+            st.info("No containers found")
+            st.stop()
 
-    # Handle session state for quick actions
-    if 'download_path' in st.session_state:
-        st.info(f"Selected: {st.session_state['download_path']}")
-        del st.session_state['download_path']
+        # Prepare data
+        container_data = []
+        for container in all_containers:
+            attrs = container.attrs
+            container_data.append({
+                'Name': container.name,
+                'ID': container.id[:12],
+                'Image': container.image.tags[0] if container.image.tags else container.image.id[:12],
+                'Status': container.status,
+                'Ports': format_ports(attrs['NetworkSettings']['Ports']),
+                'Created': attrs['Created'][:19].replace('T', ' ')
+            })
+
+        # Display table
+        df = pd.DataFrame(container_data)
+        st.dataframe(df, use_container_width=True, hide_index=True)
+
+        st.caption(f"Total: {len(all_containers)} containers")
+
+    except Exception as e:
+        st.error(f"Error: {e}")
 
 # Footer
 st.sidebar.divider()
-st.sidebar.info("🐳 Container Manager v1.0")
-st.sidebar.caption(f"Last updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+st.sidebar.info("🐳 Container Manager v2.1")
+st.sidebar.caption(f"Updated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
