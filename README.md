@@ -8,7 +8,7 @@ Interact with Claude Code on your smartphone with minimal configuration.
 
 My phone in an Android 16.
 
-- I cannot install Termux as it is deprecated + OS prevent me from installing
+- I cannot install Termux as it is deprecated + OS prevents me from installing
 - In developper mode, I do not have access to the Linux terminal ...
 
 So, I have no way to get a shell on my phone
@@ -22,14 +22,15 @@ This first week of 2026, I found two articles on HackerNews, which have similar 
 
 Both use [Tailscale](https://tailscale.com) as a way to connect their phone to a VM/computer
 
-## The way it works
+## The Way it Works
 
 ### Setup the Docker 
 
 1. Create an .env file with the `ANTROPIC_API_KEY` (adjust the docker compose if needed)
 2. Run the docker compose
 
-Commands:
+#### Useful Docker Commands
+
 ```sh
 docker compose build # To build the containers
 docker compose up -d # To run it, -d to get it on background
@@ -52,7 +53,7 @@ You can access the terminal using `<my_computer_ip_address>:7681`.
 The first time, run claude in the main directory (`/home/terminal`) just to check everything is OK.
 Then, create repo, run claude code, and build stuff!
 
-## Other feature
+## Other Features
 
 - The docker compose has a volume that makes data persistant accross several sessions
 - In the `app/` folder, there is a streamlit app, allowing you to collect data from your container.
@@ -62,6 +63,7 @@ Then, create repo, run claude code, and build stuff!
 
 - [ ] Configure Tailscale so we connect directly to the container (not to the network of the computer)
 - [ ] Configure the fontsize in the docker compose, not in the Dockerfile, so it is easier to modify
+- [ ] Add a way to automatically configure git (using github, keybase, or other), so AI or you can push the code directly to a repo, without exporting manually
 
 # Error you can get
 
