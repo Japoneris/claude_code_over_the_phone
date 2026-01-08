@@ -1,10 +1,10 @@
 # Claude Code over your Phone
 
-## Goal
+## Goal
 
 Interact with Claude Code on your smartphone with minimal configuration.
 
-## Why?
+## Why?
 
 My phone in an Android 16.
 
@@ -20,7 +20,7 @@ This first week of 2026, I found two articles on HackerNews, which have similar 
 - [Claude Code on the go](https://granda.org/en/2026/01/02/claude-code-on-the-go/)
 - [Doom Coding](https://github.com/rberg27/doom-coding)
 
-Both use Tailscale as a way to connect their phone to a VM/computer
+Both use [Tailscale](https://tailscale.com) as a way to connect their phone to a VM/computer
 
 ## The way it works
 
@@ -42,12 +42,15 @@ Claude is installed by the docker, API key is also configured for you.
 
 Now, claude can be run safely on your computer
 
-### Accessing Claude from your Phone
+### Accessing Claude Code from your Phone
 
 Configure [Tailscale](https://tailscale.com/download) on both your phone and your computer.
 
 When done, on the phone app, you should get the IP address of your computer / VM.
-You can access the terminal using `<my_computer_ip_address>:7681`
+You can access the terminal using `<my_computer_ip_address>:7681`.
+
+The first time, run claude in the main directory (`/home/terminal`) just to check everything is OK.
+Then, create repo, run claude code, and build stuff!
 
 ## Other feature
 
@@ -57,8 +60,14 @@ You can access the terminal using `<my_computer_ip_address>:7681`
 
 # TODO
 
-- [ ] Configure tailscale so we connect directly to the container (not to the network of the computer)
+- [ ] Configure Tailscale so we connect directly to the container (not to the network of the computer)
 - [ ] Configure the fontsize in the docker compose, not in the Dockerfile, so it is easier to modify
+
+# Error you can get
+
+- If you do some updates on the dockerfile or dockercompose, be aware that a volume is added. I will provide persistency. Remove it to be sure all data are reset.
+- Ink problem: when running Claude, I got one config where it was impossible to run it, as I got a library issue. Environment variables in the docker compose should have fixed the issue.
+- With the streamlit app, if the docker (python lib) version is incorrect, it will not work.
 
 # Disclaimer
 
