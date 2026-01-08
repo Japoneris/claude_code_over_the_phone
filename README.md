@@ -1,81 +1,66 @@
-# Web-Based Linux Terminal
+# Claude Code over your Phone
 
-A Docker container that provides a Linux terminal accessible via web browser - perfect for smartphones and devices without a built-in terminal.
+## Goal
 
-## Features
+Interact with Claude Code on your smartphone with minimal configuration.
 
-- Access a full Linux terminal from any web browser
-- Touch-friendly interface for smartphones
-- Pre-installed tools: bash, vim, nano, git, python3, curl, etc.
-- Non-root user with sudo access
+## Why?
 
-## Quick Start
+My phone in an Android 16.
 
-### Using Docker Compose (Recommended)
+- I cannot install Termux as it is deprecated + OS prevent me from installing
+- In developper mode, I do not have access to the Linux terminal ...
 
-1. Build and start the container:
-```bash
-docker-compose up -d
+So, I have no way to get a shell on my phone
+
+## Inspiration Sources
+
+This first week of 2026, I found two articles on HackerNews, which have similar goals, but not the same config:
+
+- [Claude Code on the go](https://granda.org/en/2026/01/02/claude-code-on-the-go/)
+- [Doom Coding](https://github.com/rberg27/doom-coding)
+
+Both use Tailscale as a way to connect their phone to a VM/computer
+
+## The way it works
+
+### Setup the Docker 
+
+1. Create an .env file with the `ANTROPIC_API_KEY` (adjust the docker compose if needed)
+2. Run the docker compose
+
+Commands:
+```sh
+docker compose build # To build the containers
+docker compose up -d # To run it, -d to get it on background
+docker compose down # To stop it if it was on background
 ```
 
-2. Access the terminal:
-   - Open your browser (including smartphone) and navigate to:
-   - `http://localhost:7681`
-   - Or from another device: `http://<your-server-ip>:7681`
+3. Go to [localhost:7681](http://127.0.0.1:7681/): You should get a terminal, and you can start with `claude`
 
-3. Stop the container:
-```bash
-docker-compose down
-```
+Claude is installed by the docker, API key is also configured for you.
 
-### Using Docker directly
+Now, claude can be run safely on your computer
 
-1. Build the image:
-```bash
-docker build -t web-terminal .
-```
+### Accessing Claude from your Phone
 
-2. Run the container:
-```bash
-docker run -d -p 7681:7681 --name web-terminal web-terminal
-```
+Configure [Tailscale](https://tailscale.com/download) on both your phone and your computer.
 
-3. Access via browser at `http://localhost:7681`
+When done, on the phone app, you should get the IP address of your computer / VM.
+You can access the terminal using `<my_computer_ip_address>:7681`
 
-## Default Credentials
+## Other feature
 
-- Username: `terminal`
-- Password: `terminal`
+- The docker compose has a volume that makes data persistant accross several sessions
+- In the `app/` folder, there is a streamlit app, allowing you to collect data from your container.
 
-Use `sudo` for administrative tasks.
 
-## Accessing from Smartphone
+# TODO
 
-1. Make sure your smartphone is on the same network as the server
-2. Find your server's IP address: `hostname -I` or `ip addr show`
-3. On your smartphone browser, navigate to: `http://<server-ip>:7681`
-4. You now have a full Linux terminal on your phone!
+- [ ] Configure tailscale so we connect directly to the container (not to the network of the computer)
+- [ ] Configure the fontsize in the docker compose, not in the Dockerfile, so it is easier to modify
 
-## Tips
+# Disclaimer
 
-- The terminal is fully interactive and supports all standard terminal features
-- You can copy/paste using browser context menu
-- Touch and hold on mobile devices for selection
-- Supports multi-touch for scrolling
-
-## Security Notes
-
-- Default password is set to `terminal` - change it after first login:
-  ```bash
-  sudo passwd terminal
-  ```
-- For production use, consider adding authentication or running behind a reverse proxy with HTTPS
-- Only expose port 7681 on trusted networks
-
-## Customization
-
-Edit the Dockerfile to:
-- Add more packages
-- Change default user
-- Install additional tools
-- Modify terminal settings
+Made with AI.
+Can contain errors
