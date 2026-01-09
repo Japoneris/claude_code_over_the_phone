@@ -1,3 +1,2 @@
-streamlit==1.31.0
+streamlit>=1.49.0
 docker==7.1.0
-pandas==2.1.4

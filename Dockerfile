@@ -41,4 +41,4 @@ WORKDIR /home/terminal
 EXPOSE 7681
 
 # Run ttyd with bash and proper options for interactive CLIs
-CMD ["ttyd", "-p", "7681", "-t", "fontSize=18", "-t", "enableZmodem=true", "-t", "disableLeaveAlert=true", "-W", "bash"]
+CMD ["ttyd", "-p", "7681", "-t", "fontSize=24", "-t", "enableZmodem=true", "-t", "disableLeaveAlert=true", "-W", "bash"]
