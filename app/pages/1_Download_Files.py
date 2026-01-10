@@ -94,10 +94,20 @@ try:
 
     # List directory contents
     st.subheader("Directory Contents")
+    files = []
     try:
-        exec_result = selected_container.exec_run(f'ls -lah {current_path}')
+        exec_result = selected_container.exec_run(f'ls -lahp {current_path}')
         if exec_result.exit_code == 0:
             st.code(exec_result.output.decode('utf-8'), language="bash")
+            
+            # Get file list for dropdown
+            for line in exec_result.output.decode('utf-8').splitlines()[1:]:
+                parts = line.split()
+                if len(parts) >= 9:
+                    name = parts[8]
+                    if not name.endswith('/'):
+                        files.append(name)
+            
         else:
             st.error(f"Error: {exec_result.output.decode('utf-8')}")
     except Exception as e:
@@ -156,6 +166,84 @@ try:
                     st.error(f"Path not found: {download_path}")
                 except Exception as e:
                     st.error(f"Error: {e}")
+
+
+
+    # Download a specific file directly (not as archive)
+    st.subheader("📄 Download Individual File")
+    
+    if files:
+        # File selection dropdown
+        selected_file_name = st.selectbox(
+            "Select a file to download",
+            options=[""] + sorted(files),
+            help="Choose the file you want to download"
+        )
+        
+        if selected_file_name:
+            # Construct full path
+            selected_file_path = os.path.join(current_path, selected_file_name)
+            
+            # Show file info
+            st.write(f"**Selected:** `{selected_file_path}`")
+            
+            # Try to get file size
+            try:
+                size_result = selected_container.exec_run(f"stat -c %s '{selected_file_path}'")
+                if size_result.exit_code == 0:
+                    size_bytes = int(size_result.output.decode('utf-8').strip())
+                    st.write(f"**Size:** {format_size(size_bytes)}")
+            except:
+                pass
+            
+            # Download button
+            if st.button("⬇️ Download File", type="primary", use_container_width=True, key="download_btn"):
+                with st.spinner("Downloading file..."):
+                    try:
+                        # Get the file as archive and extract the content
+                        bits, stat = selected_container.get_archive(selected_file_path)
+                        tar_data = b''.join(bits)
+                        
+                        # Extract file content from tar
+                        import tarfile
+                        import io
+                        
+                        tar_buffer = io.BytesIO(tar_data)
+                        with tarfile.open(fileobj=tar_buffer, mode='r') as tar:
+                            members = tar.getmembers()
+                            if members:
+                                file_member = members[0]
+                                if file_member.isfile():
+                                    file_data = tar.extractfile(file_member).read()
+                                    
+                                    st.session_state["download_data"] = file_data
+                                    st.session_state["download_filename"] = selected_file_name
+                                    st.success(f"✅ File ready for download: {selected_file_name}")
+                                else:
+                                    st.error("Selected item is not a file")
+                            else:
+                                st.error("No files found in archive")
+                    except Exception as e:
+                        st.error(f"Failed to download file: {e}")
+            
+            # Show download button if file is ready
+            if "download_data" in st.session_state and "download_filename" in st.session_state:
+                st.download_button(
+                    label=f"💾 Save {st.session_state['download_filename']}",
+                    data=st.session_state["download_data"],
+                    file_name=st.session_state["download_filename"],
+                    mime="application/octet-stream",
+                    use_container_width=True
+                )
+                
+                # Clear button
+                if st.button("🗑️ Clear", help="Clear the download buffer"):
+                    del st.session_state["download_data"]
+                    del st.session_state["download_filename"]
+                    st.rerun()
+    else:
+        st.info("No files found in current directory")
+    
 
 except Exception as e:
     st.error(f"Error: {e}")

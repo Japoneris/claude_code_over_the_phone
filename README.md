@@ -35,6 +35,7 @@ Both use [Tailscale](https://tailscale.com) as a way to connect their phone to a
 docker compose build # To build the containers
 docker compose up -d # To run it, -d to get it on background
 docker compose down # To stop it if it was on background
+docker compose down -v # Remove the volumes (clean them ! warning)
 ```
 
 3. Go to [localhost:7681](http://127.0.0.1:7681/): You should get a terminal, and you can start with `claude`
@@ -56,13 +57,23 @@ Then, create repo, run claude code, and build stuff!
 ## Other Features
 
 - The docker compose has a volume that makes data persistant accross several sessions
-- In the `app/` folder, there is a streamlit app, allowing you to collect data from your container.
+- In the `app/` folder, there is a streamlit app, allowing you to upload/download data from your container   
+    - Downlod helpful on your mobile, as we do not want tar files there do decompress
+    - Upload helpful as you cannot copy/paste on the web interface text ...
+- There is a python script `download_container_files.py` which let you download files from the container, and store it in the folder `data/<container_name>`
+
 
 
 # TODO
 
-- [ ] Configure Tailscale so we connect directly to the container (not to the network of the computer)
-- [ ] Configure the fontsize in the docker compose, not in the Dockerfile, so it is easier to modify
+- [x] Configure Tailscale so we connect directly to the container (not to the network of the computer)
+
+    - For that, connect to the :7681 IP, install tailscale ([official doc](https://tailscale.com/kb/1031/install-linux), [ssh a docker container](https://tailscale.com/learn/ssh-into-docker-container)) 
+
+- [x] Configure the fontsize in the docker compose, not in the Dockerfile, so it is easier to modify
+
+    - Easy, change that in the docker file, build again, and your done.
+
 - [ ] Add a way to automatically configure git (using github, keybase, or other), so AI or you can push the code directly to a repo, without exporting manually
 
 # Error you can get
@@ -73,5 +84,6 @@ Then, create repo, run claude code, and build stuff!
 
 # Disclaimer
 
-Made with AI.
-Can contain errors
+Code made mainly with AI. Tested by a human.
+
+Doc written by a human :)
